@@ -48,8 +48,7 @@ module Fabric
     end
 
     def generate_private_key
-      key = OpenSSL::PKey::EC.new curve
-      key.generate_key!
+      key = OpenSSL::PKey::EC.generate curve
 
       key.private_key.to_s(16).downcase
     end
@@ -157,22 +156,28 @@ module Fabric
     end
 
     def openssl_pkey_from_public_key(public_key)
-      pkey = OpenSSL::PKey::EC.new curve
-      pkey.public_key = OpenSSL::PKey::EC::Point.new(pkey.group, OpenSSL::BN.new(public_key, 16))
+      group = OpenSSL::PKey::EC::Group.new(curve)
+      public_key_bn = OpenSSL::BN.new(public_key, 16)
+      point = OpenSSL::PKey::EC::Point.new(group, public_key_bn)
+      sequence = OpenSSL::ASN1::Sequence([
+        OpenSSL::ASN1::Sequence([OpenSSL::ASN1::ObjectId("id-ecPublicKey"),
+                                OpenSSL::ASN1::ObjectId(curve)]),
+        OpenSSL::ASN1::BitString(point.to_octet_string(:uncompressed))
+      ])
 
-      pkey
+      OpenSSL::PKey::EC.new sequence.to_der
     end
 
     private
 
     def pkey_from_private_key(private_key)
-      public_key = restore_public_key private_key
-      key = OpenSSL::PKey::EC.new curve
-      key.private_key = OpenSSL::BN.new private_key, 16
-      key.public_key = OpenSSL::PKey::EC::Point.new key.group,
-                                                    OpenSSL::BN.new(public_key, 16)
+      sequence = OpenSSL::ASN1::Sequence([
+        OpenSSL::ASN1::Integer(1),
+        OpenSSL::ASN1::OctetString([private_key.upcase].pack('H*')),
+        OpenSSL::ASN1::ObjectId("prime256v1", 0, :EXPLICIT)
+      ])
 
-      key
+      OpenSSL::PKey::EC.new sequence.to_der
     end
 
     # barely understand this code - this link provides a good explanation:
